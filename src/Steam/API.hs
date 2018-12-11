@@ -9,7 +9,7 @@ import BasicPrelude
 import Data.Aeson (FromJSON(..), (.:), withObject)
 import Data.Proxy (Proxy(..))
 import Data.Time.Clock (DiffTime, secondsToDiffTime)
-import Servant.API ((:>), Get, JSON, QueryParam, ToHttpApiData(..))
+import Servant.API ((:>), Get, JSON, QueryParam', Required, ToHttpApiData(..))
 import Servant.Client (BaseUrl(..), ClientM, Scheme(Https), ServantError, client)
 
 
@@ -19,10 +19,10 @@ import Servant.Client (BaseUrl(..), ClientM, Scheme(Https), ServantError, client
 type SteamAPI =  "IPlayerService"
               :> "GetOwnedGames"
               :> "v0001"
-              :> QueryParam "key" ApiKey
-              :> QueryParam "steamid" SteamID
-              :> QueryParam "include_appinfo" IBool
-              :> QueryParam "include_played_free_games" IBool
+              :> QueryParam' '[Required] "key" ApiKey
+              :> QueryParam' '[Required] "steamid" SteamID
+              :> QueryParam' '[Required] "include_appinfo" IBool
+              :> QueryParam' '[Required] "include_played_free_games" IBool
               :> Get '[JSON] GamesResponse
 
 steamBaseUrl :: BaseUrl
@@ -83,10 +83,10 @@ minutesToDiffTime = secondsToDiffTime . (*60)
 steamAPI :: Proxy SteamAPI
 steamAPI = Proxy
 
-getGames :: Maybe ApiKey
-         -> Maybe SteamID
-         -> Maybe IBool
-         -> Maybe IBool
+getGames :: ApiKey
+         -> SteamID
+         -> IBool
+         -> IBool
          -> ClientM GamesResponse
 getGames = client steamAPI
 
