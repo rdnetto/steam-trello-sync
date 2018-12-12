@@ -1,4 +1,5 @@
 {-# LANGUAGE DataKinds #-}
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE StrictData #-}
@@ -6,11 +7,13 @@
 module Steam.API where
 
 import BasicPrelude
-import Data.Aeson (FromJSON(..), (.:), withObject)
+import Control.Monad.Except (MonadError, liftEither)
+import Data.Aeson (FromJSON(..), Value(Object), (.:), (.:?), (.!=), withObject)
 import Data.Proxy (Proxy(..))
 import Data.Time.Clock (DiffTime, secondsToDiffTime)
+import Network.HTTP.Client.TLS (newTlsManager)
 import Servant.API ((:>), Get, JSON, QueryParam', Required, ToHttpApiData(..))
-import Servant.Client (BaseUrl(..), ClientM, Scheme(Https), ServantError, client)
+import Servant.Client (BaseUrl(..), ClientM, Scheme(Https), ServantError, client, mkClientEnv, runClientM)
 
 
 -- Types
@@ -24,9 +27,6 @@ type SteamAPI =  "IPlayerService"
               :> QueryParam' '[Required] "include_appinfo" IBool
               :> QueryParam' '[Required] "include_played_free_games" IBool
               :> Get '[JSON] GamesResponse
-
-steamBaseUrl :: BaseUrl
-steamBaseUrl = BaseUrl Https "api.steampowered.com" 443 "/"
 
 newtype ApiKey  = ApiKey Text      -- ^| Steam API key
     deriving (Eq, Show, ToHttpApiData)
@@ -50,27 +50,31 @@ newtype SteamImageHash = SteamImageHash Text   -- ^| Hash representing a steam i
 
 data GamesResponse = GamesResponse {
     gamesCount :: Int,
-    games :: [GameInfo]
+    gamesList :: [GameInfo]
 } deriving (Eq, Show)
 
 instance FromJSON GamesResponse where
-    parseJSON = withObject "GamesResponse" $ \obj -> GamesResponse
-        <$> obj .: "game_count"
-        <*> obj .: "games"
+    parseJSON = withObject "response" parseRoot where
+        parseRoot obj = (withObject "GamesResponse" parseResponse) =<< (obj .: "response")
+        parseResponse obj = GamesResponse
+            <$> obj .: "game_count"
+            <*> obj .: "games"
 
 data GameInfo = GameInfo {
     gameId   :: AppId,
     gameName :: Text,
     playtimeForever :: DiffTime,
+    playtimeRecent :: DiffTime,
     gameIcon :: SteamImageHash,
     gameLogo :: SteamImageHash
 } deriving (Eq, Show)
 
 instance FromJSON GameInfo where
     parseJSON = withObject "GameInfo" $ \obj -> GameInfo
-        <$> obj .: "app_id"
+        <$> obj .: "appid"
         <*> obj .: "name"
         <*> (minutesToDiffTime <$> obj .: "playtime_forever")
+        <*> (minutesToDiffTime <$> obj .:? "playtime_2weeks" .!= 0)
         <*> obj .: "img_icon_url"
         <*> obj .: "img_logo_url"
 
@@ -80,15 +84,32 @@ instance FromJSON GameInfo where
 minutesToDiffTime :: Integer -> DiffTime
 minutesToDiffTime = secondsToDiffTime . (*60)
 
+steamBaseUrl :: BaseUrl
+steamBaseUrl = BaseUrl Https "api.steampowered.com" 443 "/"
+
 steamAPI :: Proxy SteamAPI
 steamAPI = Proxy
 
-getGames :: ApiKey
-         -> SteamID
-         -> IBool
-         -> IBool
-         -> ClientM GamesResponse
-getGames = client steamAPI
+ownedGames :: ApiKey
+           -> SteamID
+           -> IBool
+           -> IBool
+           -> ClientM GamesResponse
+ownedGames = client steamAPI
+
+getGames :: (MonadIO m, MonadError ServantError m)
+         => ApiKey -> SteamID -> m GamesResponse
+getGames apiKey steamId = translateResultType $ do
+    -- Managers are relatively expensive - if we start doing more requests, should factor this out
+    manager <- newTlsManager
+    let clientEnv = mkClientEnv manager steamBaseUrl
+    let q = ownedGames apiKey steamId ITrue ITrue
+    runClientM q clientEnv
+
+-- Helper function for converting from Servant's types to our transformer stack
+translateResultType :: (MonadIO m, MonadError l m)
+                    => IO (Either l r) -> m r
+translateResultType = (liftEither =<<) . liftIO
 
 steamImageUrl :: AppId -> SteamImageHash -> Text
 steamImageUrl (AppId appId) (SteamImageHash hash) = concat [

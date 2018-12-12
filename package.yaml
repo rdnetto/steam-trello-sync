@@ -28,10 +28,12 @@ dependencies:
 - basic-prelude
 - aeson
 - microlens
+- mtl
 
 library:
   source-dirs: src
   dependencies:
+  - http-client-tls
   - servant
   - servant-client
   - time
@@ -57,3 +59,6 @@ tests:
     - -with-rtsopts=-N
     dependencies:
     - steam-trello-sync
+    - tasty
+    - tasty-hunit
+    - time
