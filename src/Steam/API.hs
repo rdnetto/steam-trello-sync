@@ -8,7 +8,7 @@ module Steam.API where
 
 import BasicPrelude
 import Control.Monad.Except (MonadError, liftEither)
-import Data.Aeson (FromJSON(..), Value(Object), (.:), (.:?), (.!=), withObject)
+import Data.Aeson (FromJSON(..), ToJSON, Value(Object), (.:), (.:?), (.!=), withObject)
 import Data.Proxy (Proxy(..))
 import Data.Time.Clock (DiffTime, secondsToDiffTime)
 import Network.HTTP.Client.TLS (newTlsManager)
@@ -29,10 +29,10 @@ type SteamAPI =  "IPlayerService"
               :> Get '[JSON] GamesResponse
 
 newtype ApiKey  = ApiKey Text      -- ^| Steam API key
-    deriving (Eq, Show, ToHttpApiData)
+    deriving (Eq, Show, ToHttpApiData, FromJSON, ToJSON)
 
 newtype SteamID = SteamID Text      -- ^| Steam account ID
-    deriving (Eq, Show, ToHttpApiData)
+    deriving (Eq, Show, ToHttpApiData, FromJSON, ToJSON)
 
 data IBool = ITrue          -- ^| Needed because Steam insists on representing these as ints
            | IFalse
@@ -43,10 +43,10 @@ instance ToHttpApiData IBool where
     toQueryParam IFalse = "0"
 
 newtype AppId = AppId Int         -- ^| Game/application ID
-    deriving (Eq, Show, FromJSON)
+    deriving (Eq, Show, FromJSON, ToJSON)
 
 newtype SteamImageHash = SteamImageHash Text   -- ^| Hash representing a steam image
-    deriving (Eq, Show, FromJSON)
+    deriving (Eq, Show, FromJSON, ToJSON)
 
 data GamesResponse = GamesResponse {
     gamesCount :: Int,

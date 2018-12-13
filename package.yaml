@@ -48,6 +48,7 @@ executables:
     - -with-rtsopts=-N
     dependencies:
     - steam-trello-sync
+    - directory
 
 tests:
   steam-trello-sync-test:
