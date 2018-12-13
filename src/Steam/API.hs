@@ -4,7 +4,13 @@
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE StrictData #-}
 
-module Steam.API where
+module Steam.API (
+    ApiKey(..),
+    SteamID(..),
+    GamesResponse(..),
+    GameInfo(..),
+    getGames
+) where
 
 import BasicPrelude
 import Control.Monad.Except (MonadError, liftEither)
@@ -16,18 +22,7 @@ import Servant.API ((:>), Get, JSON, QueryParam', Required, ToHttpApiData(..))
 import Servant.Client (BaseUrl(..), ClientM, Scheme(Https), ServantError, client, mkClientEnv, runClientM)
 
 
--- Types
-
--- https://api.steampowered.com/IPlayerService/GetOwnedGames/v0001/?key=$KEY&steamid=76561198093111172&include_appinfo=1&include_played_free_games=1
-type SteamAPI =  "IPlayerService"
-              :> "GetOwnedGames"
-              :> "v0001"
-              :> QueryParam' '[Required] "key" ApiKey
-              :> QueryParam' '[Required] "steamid" SteamID
-              :> QueryParam' '[Required] "include_appinfo" IBool
-              :> QueryParam' '[Required] "include_played_free_games" IBool
-              :> Get '[JSON] GamesResponse
-
+-- Newtypes
 newtype ApiKey  = ApiKey Text      -- ^| Steam API key
     deriving (Eq, Show, ToHttpApiData, FromJSON, ToJSON)
 
@@ -47,6 +42,26 @@ newtype AppId = AppId Int         -- ^| Game/application ID
 
 newtype SteamImageHash = SteamImageHash Text   -- ^| Hash representing a steam image
     deriving (Eq, Show, FromJSON, ToJSON)
+
+
+-- owned games endpoint
+
+-- https://api.steampowered.com/IPlayerService/GetOwnedGames/v0001/?key=$KEY&steamid=76561198093111172&include_appinfo=1&include_played_free_games=1
+type OwnedGamesEndpoint
+    = "IPlayerService"
+    :> "GetOwnedGames"
+    :> "v0001"
+    :> QueryParam' '[Required] "key" ApiKey
+    :> QueryParam' '[Required] "steamid" SteamID
+    :> QueryParam' '[Required] "include_appinfo" IBool
+    :> QueryParam' '[Required] "include_played_free_games" IBool
+    :> Get '[JSON] GamesResponse
+
+ownedGames :: ApiKey
+           -> SteamID
+           -> IBool
+           -> IBool
+           -> ClientM GamesResponse
 
 data GamesResponse = GamesResponse {
     gamesCount :: Int,
@@ -79,30 +94,30 @@ instance FromJSON GameInfo where
         <*> obj .: "img_logo_url"
 
 
--- Functions
+-- Compile the API
 
-minutesToDiffTime :: Integer -> DiffTime
-minutesToDiffTime = secondsToDiffTime . (*60)
-
-steamBaseUrl :: BaseUrl
-steamBaseUrl = BaseUrl Https "api.steampowered.com" 443 "/"
+type SteamAPI = OwnedGamesEndpoint
 
 steamAPI :: Proxy SteamAPI
 steamAPI = Proxy
 
-ownedGames :: ApiKey
-           -> SteamID
-           -> IBool
-           -> IBool
-           -> ClientM GamesResponse
 ownedGames = client steamAPI
+
+baseUrl :: BaseUrl
+baseUrl = BaseUrl Https "api.steampowered.com" 443 "/"
+
+
+-- Misc functions
+
+minutesToDiffTime :: Integer -> DiffTime
+minutesToDiffTime = secondsToDiffTime . (*60)
 
 getGames :: (MonadIO m, MonadError ServantError m)
          => ApiKey -> SteamID -> m GamesResponse
 getGames apiKey steamId = translateResultType $ do
     -- Managers are relatively expensive - if we start doing more requests, should factor this out
     manager <- newTlsManager
-    let clientEnv = mkClientEnv manager steamBaseUrl
+    let clientEnv = mkClientEnv manager baseUrl
     let q = ownedGames apiKey steamId ITrue ITrue
     runClientM q clientEnv
 
