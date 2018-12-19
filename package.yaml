@@ -28,12 +28,14 @@ dependencies:
 - basic-prelude
 - aeson
 - microlens
+- microlens-mtl
 - mtl
 
 library:
   source-dirs: src
   dependencies:
   - http-client-tls
+  - microlens-th
   - servant
   - servant-client
   - time

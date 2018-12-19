@@ -4,30 +4,26 @@
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE StrictData #-}
 
-module Steam.API (
-    ApiKey(..),
-    SteamID(..),
-    GamesResponse(..),
-    GameInfo(..),
-    getGames
-) where
+module Steam.API where
 
 import BasicPrelude
-import Control.Monad.Except (MonadError, liftEither)
+import Control.Monad.Except (MonadError)
 import Data.Aeson (FromJSON(..), ToJSON, Value(Object), (.:), (.:?), (.!=), withObject)
 import Data.Proxy (Proxy(..))
 import Data.Time.Clock (DiffTime, secondsToDiffTime)
-import Network.HTTP.Client.TLS (newTlsManager)
 import Servant.API ((:>), Get, JSON, QueryParam', Required, ToHttpApiData(..))
-import Servant.Client (BaseUrl(..), ClientM, Scheme(Https), ServantError, client, mkClientEnv, runClientM)
+import Servant.Client (BaseUrl(..), ClientM, Scheme(Https), ServantError, client, hoistClient)
 
+
+class Monad m => SteamMonad m where
+  liftSteamClient :: ClientM a -> m a
 
 -- Newtypes
 newtype ApiKey  = ApiKey Text      -- ^| Steam API key
-    deriving (Eq, Show, ToHttpApiData, FromJSON, ToJSON)
+    deriving (Eq, Show, ToHttpApiData, FromJSON, ToJSON, IsString)
 
 newtype SteamID = SteamID Text      -- ^| Steam account ID
-    deriving (Eq, Show, ToHttpApiData, FromJSON, ToJSON)
+    deriving (Eq, Show, ToHttpApiData, FromJSON, ToJSON, IsString)
 
 data IBool = ITrue          -- ^| Needed because Steam insists on representing these as ints
            | IFalse
@@ -57,11 +53,12 @@ type OwnedGamesEndpoint
     :> QueryParam' '[Required] "include_played_free_games" IBool
     :> Get '[JSON] GamesResponse
 
-ownedGames :: ApiKey
+ownedGames :: SteamMonad m
+           => ApiKey
            -> SteamID
            -> IBool
            -> IBool
-           -> ClientM GamesResponse
+           -> m GamesResponse
 
 data GamesResponse = GamesResponse {
     gamesCount :: Int,
@@ -101,7 +98,7 @@ type SteamAPI = OwnedGamesEndpoint
 steamAPI :: Proxy SteamAPI
 steamAPI = Proxy
 
-ownedGames = client steamAPI
+ownedGames = hoistClient steamAPI liftSteamClient (client steamAPI)
 
 baseUrl :: BaseUrl
 baseUrl = BaseUrl Https "api.steampowered.com" 443 "/"
@@ -111,20 +108,6 @@ baseUrl = BaseUrl Https "api.steampowered.com" 443 "/"
 
 minutesToDiffTime :: Integer -> DiffTime
 minutesToDiffTime = secondsToDiffTime . (*60)
-
-getGames :: (MonadIO m, MonadError ServantError m)
-         => ApiKey -> SteamID -> m GamesResponse
-getGames apiKey steamId = translateResultType $ do
-    -- Managers are relatively expensive - if we start doing more requests, should factor this out
-    manager <- newTlsManager
-    let clientEnv = mkClientEnv manager baseUrl
-    let q = ownedGames apiKey steamId ITrue ITrue
-    runClientM q clientEnv
-
--- Helper function for converting from Servant's types to our transformer stack
-translateResultType :: (MonadIO m, MonadError l m)
-                    => IO (Either l r) -> m r
-translateResultType = (liftEither =<<) . liftIO
 
 steamImageUrl :: AppId -> SteamImageHash -> Text
 steamImageUrl (AppId appId) (SteamImageHash hash) = concat [

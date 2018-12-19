@@ -5,32 +5,32 @@ import Control.Monad.Except (ExceptT, runExceptT)
 import Data.Aeson (eitherDecodeFileStrict, encodeFile)
 import System.Directory (doesFileExist)
 
-import Config
-import Steam.API
+import AppM
+import AppState
+import Steam.API (gamesList)
+import Steam.Manager
+import Trello.Manager
 
 
 configPath :: FilePath
 configPath = "config.json"
 
 main :: IO ()
-main = handleErrors $ do
-    configExists <- liftIO $ doesFileExist configPath
+main = do
+    configExists <- doesFileExist configPath
 
     if configExists
        then do
-           Config apiKey steamID <- liftIO $ forceRight =<< eitherDecodeFileStrict configPath
-           resp <- getGames apiKey steamID
-           print . gamesList $ resp
+           cfg <- unsafeRight <$> eitherDecodeFileStrict configPath
+
+           runAppM cfg $ do
+               print . gamesList =<< getGames
+
        else do
-           liftIO $ encodeFile configPath $ Config (ApiKey "UNKNOWN") (SteamID "UNKNOWN")
+           liftIO $ encodeFile configPath templateConfig
            error "No config file provided - creating template. Please populate the template with the correct values."
 
-handleErrors :: Show e => ExceptT e IO a -> IO a
-handleErrors x = handle =<< runExceptT x where
-    handle (Left err)  = error (show err)
-    handle (Right val) = pure val
-
-forceRight :: Either String a -> IO a
-forceRight (Left err) = error err
-forceRight (Right x)  = pure x
+unsafeRight :: Either String r -> r
+unsafeRight (Right r) = r
+unsafeRight (Left msg) = error msg
 
