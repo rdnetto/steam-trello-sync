@@ -7,13 +7,13 @@
 module AppState where
 
 import BasicPrelude
-import Data.Aeson (FromJSON, ToJSON)
-import GHC.Generics (Generic)
+import Data.Aeson.TH (deriveJSON)
 import Lens.Micro.TH (makeLenses, makeFields)
 import Servant.Client (ClientEnv)
 
 import Steam.API as S
 import Trello.API as T
+import Util
 
 
 -- State available through out program
@@ -28,28 +28,17 @@ data AppState = AppState {
 data Config = Config {
     _steam  :: SteamConfig,
     _trello :: TrelloConfig
-} deriving (Eq, Show, Generic)
-
-instance FromJSON Config
-instance ToJSON Config
-
+} deriving (Eq, Show)
 
 data SteamConfig = SteamConfig {
     steamConfigApiKey  :: S.ApiKey,
     steamConfigSteamID :: SteamID
-} deriving (Eq, Show, Generic)
-
-instance FromJSON SteamConfig
-instance ToJSON SteamConfig
-
+} deriving (Eq, Show)
 
 data TrelloConfig = TrelloConfig {
     trelloConfigApiKey    :: T.ApiKey,
     trelloConfigAuthToken :: AuthToken
-} deriving (Eq, Show, Generic)
-
-instance FromJSON TrelloConfig
-instance ToJSON TrelloConfig
+} deriving (Eq, Show)
 
 -- Default values for generating file
 templateConfig :: Config
@@ -61,3 +50,7 @@ makeLenses ''Config
 makeFields ''SteamConfig
 makeFields ''TrelloConfig
 
+-- Aeson instances
+deriveJSON (discardingPrefix "_")            ''Config
+deriveJSON (discardingPrefix "steamConfig")  ''SteamConfig
+deriveJSON (discardingPrefix "trelloConfig") ''TrelloConfig
