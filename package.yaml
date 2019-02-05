@@ -1,10 +1,10 @@
 name:                steam-trello-sync
 version:             0.1.0.0
 github:              "rdnetto/steam-trello-sync"
-license:             BSD3
+license:             Apache
 author:              "Reuben D'Netto"
 maintainer:          "rdnetto@gmail.com"
-copyright:           "Copyright 2017"
+copyright:           "Copyright 2019"
 
 extra-source-files:
 - README.md
